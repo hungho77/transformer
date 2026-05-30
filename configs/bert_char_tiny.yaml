@@ -1,0 +1,37 @@
+arch: bert
+name: bert_char_tiny
+seed: 123
+device: auto
+epochs: 1
+max_steps: 500
+batch_size: 64
+num_workers: 2
+grad_clip: 1.0
+amp: false
+log_interval: 50
+save_dir: saved
+
+data:
+  mask_prob: 0.15
+
+model:
+  max_seq_len: 128
+  dim: 192
+  n_layers: 4
+  num_heads: 6
+  num_token_types: 2
+  attention_name: mha
+  ffn_type: mlp
+  ffn_mult: 4.0
+  norm_type: layer
+  pre_norm: true
+  dropout: 0.1
+
+optimizer:
+  type: AdamW
+  lr: 0.0006
+  weight_decay: 0.01
+
+scheduler:
+  type: cosine_warmup
+  warmup_steps: 50
