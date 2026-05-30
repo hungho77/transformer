@@ -10,7 +10,7 @@ def _cfg(name):
     kw = dict(dim=DIM, num_heads=HEADS)
     if name == "gqa":
         kw["num_kv_heads"] = 2
-    if name == "local":
+    if name in ("local", "local_flex"):
         kw["window_size"] = 8
     return AttentionConfig(**kw)
 

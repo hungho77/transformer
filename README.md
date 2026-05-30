@@ -26,11 +26,12 @@ Swap attention by changing one config field (`attention_name`):
 | `gqa`    | grouped-query (set `num_kv_heads`)           | ✓ |
 | `mqa`    | multi-query (single KV head)                 | ✓ |
 | `linear` | feature-map linear attention (O(S·d²))       | — (cumsum causal) |
-| `local`  | sliding-window (set `window_size`)           | ✓ (banded mask) |
+| `local`  | sliding-window, banded mask (set `window_size`) | ✓ (banded mask) |
+| `local_flex` | sliding-window via `flex_attention` block mask (true sparsity) | — (flex kernel) |
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig
-print(available_attentions())   # ['flash','gqa','linear','local','mha','mqa','sdpa']
+print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mqa','sdpa']
 attn = build_attention("gqa", AttentionConfig(dim=512, num_heads=8, num_kv_heads=2))
 ```
 
@@ -61,8 +62,10 @@ Prints latency / peak memory / FLOPs per (variant × sequence length). The fused
 `sdpa`/`flash` paths cut peak memory roughly an order of magnitude versus the
 explicit `mha` at long sequences; `gqa`/`mqa` reduce KV cost; `linear` shows
 sub-quadratic FLOP growth. Note: the reference `linear` cumsum path trades memory
-for simplicity, and `local` currently uses a banded mask (no sparsity savings yet
-— a flex_attention backend is the planned upgrade).
+for simplicity, and `local` (banded mask) materializes the score matrix — use
+`local_flex` for true block-sparse windowed attention via `flex_attention`, which
+skips out-of-window blocks and saves memory at long sequences (CUDA-accelerated;
+falls back to the banded path when flex is unavailable).
 
 ## Layout
 
@@ -99,6 +102,6 @@ via `attention_name: myattn`.
 ## Tests
 
 ```bash
-pytest -q          # 41 tests: shapes, causal-mask, equivalence, layers, models
+pytest -q          # 47 tests: shapes, causal-mask, equivalence, layers, models
 flake8 src tests examples
 ```

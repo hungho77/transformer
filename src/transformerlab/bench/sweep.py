@@ -1,6 +1,8 @@
 """Sweep attention variants across sequence lengths and report a comparison table."""
 from __future__ import annotations
 
+import gc
+
 import torch
 
 from ..attention import AttentionConfig, available_attentions, build_attention
@@ -42,7 +44,7 @@ def run_sweep(*, variants=None, seq_lens=(256, 512, 1024), dim=512, num_heads=8,
     rows = []
     for name in variants:
         kv = 2 if name == "gqa" else None
-        win = max(seq_lens) // 4 if name == "local" else None
+        win = max(seq_lens) // 4 if name in ("local", "local_flex") else None
         for seq_len in seq_lens:
             try:
                 rows.append(benchmark_attention(
@@ -53,7 +55,23 @@ def run_sweep(*, variants=None, seq_lens=(256, 512, 1024), dim=512, num_heads=8,
             except Exception as exc:  # noqa: BLE001
                 rows.append({**{c: float("nan") for c in _COLUMNS}, "variant": name, "seq_len": seq_len})
                 print(f"  [skip] {name} @ {seq_len}: {exc}")
+            finally:
+                _free_memory(device)
     return rows
+
+
+def _free_memory(device):
+    """Release allocator caches and compiled-kernel state between measurements so
+    one variant's leftover memory does not OOM the next (notably the compiled
+    flex_attention kernel, whose buffers otherwise persist across sequence lengths)."""
+    try:
+        torch._dynamo.reset()
+    except Exception:  # noqa: BLE001
+        pass
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
 
 def format_table(rows) -> str:

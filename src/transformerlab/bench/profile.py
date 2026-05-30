@@ -35,6 +35,7 @@ def measure_peak_memory(fn: Callable, device) -> float:
     if device.type != "cuda":
         fn()
         return 0.0
+    torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.synchronize()
     fn()
@@ -43,10 +44,18 @@ def measure_peak_memory(fn: Callable, device) -> float:
 
 
 def measure_flops(fn: Callable) -> float:
-    """Forward-pass GFLOPs via FlopCounterMode, or float('nan') if unavailable."""
+    """Forward-pass GFLOPs via FlopCounterMode.
+
+    Returns float('nan') when the counter is unavailable or cannot trace the op
+    (e.g. flex_attention's higher-order ops), so a single un-countable variant
+    does not abort the whole sweep.
+    """
     if not _HAS_FLOP_COUNTER:
         return float("nan")
-    counter = FlopCounterMode(display=False)
-    with counter:
-        fn()
-    return counter.get_total_flops() / 1e9
+    try:
+        counter = FlopCounterMode(display=False)
+        with counter:
+            fn()
+        return counter.get_total_flops() / 1e9
+    except Exception:  # noqa: BLE001
+        return float("nan")

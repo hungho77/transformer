@@ -4,7 +4,7 @@ import torch
 
 from transformerlab.attention import AttentionConfig, build_attention
 
-CAUSAL_VARIANTS = ["mha", "sdpa", "gqa", "mqa", "linear", "local"]
+CAUSAL_VARIANTS = ["mha", "sdpa", "gqa", "mqa", "linear", "local", "local_flex"]
 
 
 @pytest.mark.parametrize("name", CAUSAL_VARIANTS)
@@ -14,7 +14,7 @@ def test_causal_no_future_leak(name):
     kw = dict(dim=DIM, num_heads=H)
     if name == "gqa":
         kw["num_kv_heads"] = 2
-    if name == "local":
+    if name in ("local", "local_flex"):
         kw["window_size"] = S  # full window -> still strictly causal
     attn = build_attention(name, AttentionConfig(**kw)).eval()
 
