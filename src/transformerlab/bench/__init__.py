@@ -7,6 +7,7 @@ from .quality import (
     run_quality_sweep,
     train_and_evaluate,
 )
+from .longctx import format_longctx_table, run_longctx_sweep
 
 __all__ = [
     "measure_flops",
@@ -20,4 +21,6 @@ __all__ = [
     "mark_pareto",
     "run_quality_sweep",
     "train_and_evaluate",
+    "format_longctx_table",
+    "run_longctx_sweep",
 ]
