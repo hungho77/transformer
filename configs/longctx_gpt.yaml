@@ -1,0 +1,25 @@
+name: longctx_gpt
+save_dir: saved
+seed: 123
+device: auto
+train_steps: 100
+batch_size: 16
+num_workers: 2
+
+variants: [mha, sdpa, gqa, mqa, linear, local, local_flex]
+ctx_lens: [512, 1024, 2048, 4096]
+
+model:
+  dim: 128
+  n_layers: 2
+  num_heads: 4
+  ffn_type: mlp
+  ffn_mult: 4.0
+  norm_type: rms
+  dropout: 0.0
+  use_rotary: true
+
+optimizer:
+  type: AdamW
+  lr: 0.0006
+  weight_decay: 0.1

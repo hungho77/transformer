@@ -27,6 +27,7 @@ python examples/train_seq2seq.py --config configs/seq2seq_copy.yaml
 python examples/train_bert.py --config configs/bert_char_tiny.yaml           # masked-LM pretraining
 python examples/run_bench.py --config configs/bench_attention.yaml           # speed/memory/FLOPs sweep
 python examples/run_quality_bench.py --config configs/quality_gpt.yaml       # val-ppl vs throughput/memory + Pareto
+python examples/run_longctx_bench.py --config configs/longctx_gpt.yaml       # quality/memory vs context length
 ```
 
 `train_vit.py --dataset fake` avoids the CIFAR-10 download (random images) for quick smoke runs.
@@ -69,6 +70,9 @@ imports `models`. Key pieces:
   `_free_memory` (gc + `empty_cache` + `torch._dynamo.reset()`) between rows so
   the compiled `local_flex` kernel doesn't OOM later rows; `measure_flops`
   degrades to `nan` for ops it can't trace rather than aborting a row.
+  `longctx.py` is a thin wrapper over `run_quality_sweep` that sweeps
+  `model.max_seq_len` to compare variants as context length grows (where
+  `mha`/`local` OOM and `sdpa`/`local_flex`/`mqa` keep running).
 
 ## Conventions & gotchas
 

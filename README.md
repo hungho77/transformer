@@ -96,6 +96,32 @@ near-equal quality; `linear` is the clearest quality cost. Writes
 `saved/<name>/quality.{csv,md}`. GPT char-LM today; the harness takes a
 `build_model`/`loss_fn`, so ViT (accuracy) and BERT (MLM) can be added later.
 
+### Long context
+
+Efficient attention only earns its keep at long context. This trains the same
+GPT at growing context lengths and reports where each variant still runs, at
+what quality and memory:
+
+```bash
+python examples/run_longctx_bench.py --config configs/longctx_gpt.yaml
+```
+
+Peak memory (MB) per context length — `mha`/`local` (dense score matrix) grow
+quadratically and OOM at 4096, while the efficient variants scale and keep going:
+
+```
+variant       512    1024    2048    4096      val_ppl@4096
+mha           442    1504    5551    OOM       —
+local         442    1504    5551    OOM       —      (banded mask: no savings)
+sdpa          194     366     712    1389      10.57
+mqa           181     342     664    1293      10.77
+local_flex    202     382     744    1453      10.23   (best quality)
+linear        794    1567    3112    6202      12.58   (cheap FLOPs, weak quality)
+```
+
+`local_flex` gives the best perplexity at 4096 using ~4× less memory than `mha`
+would; `mha`/`local` can't run there at all. Writes `saved/<name>/longctx.{csv,md}`.
+
 ## Layout
 
 ```
@@ -105,7 +131,7 @@ src/transformerlab/
   models/      base, dataclass configs, GPT, ViT, EncoderDecoder, BERT
   data/        char-level LM, vision, synthetic seq2seq, masked-LM tasks
   train/       task-agnostic Trainer, optim/schedule, YAML run config
-  bench/       latency/memory/FLOPs sweep + quality-vs-efficiency harness
+  bench/       latency/memory/FLOPs sweep + quality and long-context harnesses
 configs/   YAML run configs        examples/  runnable train/sample/bench scripts
 tests/     shapes, causal mask, equivalence, layers, models, registry
 ```
