@@ -3,7 +3,7 @@ import pytest
 from transformerlab.attention import AttentionConfig, MaskType, available_attentions, build_attention
 from transformerlab.attention.registry import ATTENTION_REGISTRY
 
-EXPECTED = {"mha", "sdpa", "gqa", "mqa", "linear", "local", "local_flex", "flash"}
+EXPECTED = {"mha", "sdpa", "gqa", "mqa", "linear", "local", "local_flex", "flash", "mla"}
 
 
 def test_all_variants_registered():

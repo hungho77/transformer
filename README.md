@@ -28,10 +28,11 @@ Swap attention by changing one config field (`attention_name`):
 | `linear` | feature-map linear attention (O(S·d²))       | — (cumsum causal) |
 | `local`  | sliding-window, banded mask (set `window_size`) | ✓ (banded mask) |
 | `local_flex` | sliding-window via `flex_attention` block mask (true sparsity) | — (flex kernel) |
+| `mla`    | multi-head latent attention (compressed KV cache + decoupled RoPE) | — (own kernel) |
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig
-print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mqa','sdpa']
+print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mla','mqa','sdpa']
 attn = build_attention("gqa", AttentionConfig(dim=512, num_heads=8, num_kv_heads=2))
 ```
 

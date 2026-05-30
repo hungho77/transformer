@@ -27,6 +27,7 @@ class GPT(BaseModel):
             attention_name=cfg.attention_name if isinstance(cfg.attention_name, str) else "mha",
             ffn_type=cfg.ffn_type, ffn_mult=cfg.ffn_mult, norm_type=cfg.norm_type,
             dropout=cfg.dropout, bias=cfg.bias, window_size=cfg.window_size, use_rotary=cfg.use_rotary,
+            extra=dict(cfg.extra),  # variant-specific knobs (e.g. MLA latent dims) flow to AttentionConfig
         )
         self.blocks = make_blocks(block_cfg, cfg.n_layers, attention_name=cfg.attention_name)
         self.norm_f = build_norm(cfg.norm_type, cfg.dim)
