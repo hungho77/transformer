@@ -1,6 +1,11 @@
 [flake8]
-ignore = F401, F403
+# F401/F403: star-imports & re-exports in __init__/registry modules are intentional.
+# E203/E226/W503/W504: restore flake8's default-ignored style codes (PEP8-compatible).
+ignore = E203, E226, W503, W504, F401, F403
 max-line-length = 120
 exclude =
     .git,
     __pycache__,
+    build,
+    .eggs,
+    *.egg-info,

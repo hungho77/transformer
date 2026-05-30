@@ -1,0 +1,39 @@
+arch: vit
+name: vit_cifar10
+seed: 123
+device: auto
+epochs: 1
+max_steps: 500
+batch_size: 128
+num_workers: 4
+grad_clip: 1.0
+amp: false
+log_interval: 50
+save_dir: saved
+
+data:
+  name: cifar10
+
+model:
+  image_size: 32
+  patch_size: 4
+  in_channels: 3
+  num_classes: 10
+  dim: 192
+  n_layers: 6
+  num_heads: 6
+  attention_name: sdpa
+  ffn_type: mlp
+  ffn_mult: 4.0
+  norm_type: layer
+  dropout: 0.1
+  pool: cls
+
+optimizer:
+  type: AdamW
+  lr: 0.0008
+  weight_decay: 0.05
+
+scheduler:
+  type: cosine_warmup
+  warmup_steps: 50
