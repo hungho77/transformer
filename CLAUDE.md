@@ -73,6 +73,9 @@ imports `models`. Key pieces:
   `longctx.py` is a thin wrapper over `run_quality_sweep` that sweeps
   `model.max_seq_len` to compare variants as context length grows (where
   `mha`/`local` OOM and `sdpa`/`local_flex`/`mqa` keep running).
+  `decode.py` drives GPT's incremental-decode path (`_forward_cached` + per-layer
+  `KVCache`) and reports **actual cached bytes** + decode throughput — the regime
+  where `mqa`/`gqa` (fewer cached KV heads) and `mla` (compressed latent) win.
 
 ## Conventions & gotchas
 

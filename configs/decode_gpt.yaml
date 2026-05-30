@@ -1,0 +1,22 @@
+name: decode_gpt
+save_dir: saved
+seed: 123
+device: auto
+
+# KV-cache size is the interesting axis here: mha/sdpa cache full K+V,
+# gqa fewer heads, mqa one head, mla a compressed latent.
+variants: [mha, sdpa, gqa, mqa, mla]
+prompt_len: 256
+decode_len: 512
+batch: 4
+vocab_size: 256
+
+model:
+  dim: 512
+  n_layers: 8
+  num_heads: 8
+  ffn_type: mlp
+  ffn_mult: 4.0
+  norm_type: rms
+  dropout: 0.0
+  use_rotary: true
