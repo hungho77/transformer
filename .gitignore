@@ -100,11 +100,12 @@ ENV/
 # mypy
 .mypy_cache/
 
-# input data, saved log, checkpoints
-data/
-input/
-saved/
-datasets/
+# input data, saved log, checkpoints (anchored to repo root so they do NOT
+# match the src/transformerlab/data source package)
+/data/
+/input/
+/saved/
+/datasets/
 
 # editor, os cache directory
 .vscode/
