@@ -16,7 +16,7 @@ and be benchmarked head-to-head.
 
 ```bash
 pip install -e ".[dev]"        # editable install + pytest/flake8
-pytest -q                      # full suite (~51 tests, CPU, ~4s)
+pytest -q                      # full suite (~55 tests, CPU, ~4s)
 pytest tests/test_attention_equivalence.py -q   # single test file
 flake8 src tests examples      # lint (config in .flake8, max-line 120)
 
@@ -24,7 +24,8 @@ python examples/train_gpt.py --config configs/gpt_char_tiny.yaml [--steps N] [--
 python examples/sample_gpt.py --ckpt saved/gpt_char_tiny --prompt "ROMEO:"
 python examples/train_vit.py --config configs/vit_cifar10.yaml [--dataset fake]
 python examples/train_seq2seq.py --config configs/seq2seq_copy.yaml
-python examples/run_bench.py --config configs/bench_attention.yaml          # speed/memory/FLOPs sweep
+python examples/train_bert.py --config configs/bert_char_tiny.yaml           # masked-LM pretraining
+python examples/run_bench.py --config configs/bench_attention.yaml           # speed/memory/FLOPs sweep
 python examples/run_quality_bench.py --config configs/quality_gpt.yaml       # val-ppl vs throughput/memory + Pareto
 ```
 
@@ -55,7 +56,8 @@ imports `models`. Key pieces:
   `make_blocks()` builds a stack and accepts a per-layer list of attention names
   (heterogeneous-attention models).
 - **`models/`**: `GPT` (causal, RoPE by default, KV-cache `generate`), `VisionTransformer`
-  (patch embed + cls/mean pool), `EncoderDecoder` (cross-attention decoder).
+  (patch embed + cls/mean pool), `EncoderDecoder` (cross-attention decoder), `BERT`
+  (bidirectional encoder + MLM head + token-type/segment embeddings).
   Configs are dataclasses in `models/configs.py`; YAML run files load into
   `RunConfig` (`train/config.py`) and the model dataclasses.
 - **`train/trainer.py`**: task-agnostic loop. The task is injected as

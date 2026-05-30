@@ -48,6 +48,9 @@ python examples/train_vit.py --config configs/vit_cifar10.yaml
 # Encoder-decoder on a synthetic copy task
 python examples/train_seq2seq.py --config configs/seq2seq_copy.yaml
 
+# Encoder-only BERT, masked-LM pretraining on tiny-shakespeare
+python examples/train_bert.py --config configs/bert_char_tiny.yaml
+
 # Try any attention variant without editing the config
 python examples/train_gpt.py --config configs/gpt_char_tiny.yaml --attention linear
 ```
@@ -99,8 +102,8 @@ near-equal quality; `linear` is the clearest quality cost. Writes
 src/transformerlab/
   attention/   base contract, registry, shared SDP core, and all variants
   layers/      embeddings, rotary, norms, FFN/SwiGLU, generic TransformerBlock
-  models/      base, dataclass configs, GPT, ViT, EncoderDecoder
-  data/        char-level LM, vision, synthetic seq2seq tasks
+  models/      base, dataclass configs, GPT, ViT, EncoderDecoder, BERT
+  data/        char-level LM, vision, synthetic seq2seq, masked-LM tasks
   train/       task-agnostic Trainer, optim/schedule, YAML run config
   bench/       latency/memory/FLOPs sweep + quality-vs-efficiency harness
 configs/   YAML run configs        examples/  runnable train/sample/bench scripts
@@ -128,6 +131,6 @@ via `attention_name: myattn`.
 ## Tests
 
 ```bash
-pytest -q          # 51 tests: shapes, causal-mask, equivalence, layers, models, bench
+pytest -q          # shapes, causal-mask, equivalence, layers, models, bench
 flake8 src tests examples
 ```

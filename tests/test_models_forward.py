@@ -2,6 +2,8 @@ import pytest
 import torch
 
 from transformerlab.models import (
+    BERT,
+    BERTConfig,
     GPT,
     GPTConfig,
     EncoderDecoder,
@@ -42,6 +44,29 @@ def test_vit_forward_backward():
     assert logits.shape == (3, 5)
     loss.backward()
     assert _backward_ok(model)
+
+
+@pytest.mark.parametrize("attention_name", ["mha", "sdpa", "linear"])
+def test_bert_mlm_forward_backward(attention_name):
+    model = BERT(BERTConfig(vocab_size=40, max_seq_len=32, dim=48, n_layers=2,
+                            num_heads=4, attention_name=attention_name))
+    ids = torch.randint(0, 40, (3, 16))
+    labels = torch.full((3, 16), -100)
+    labels[:, ::4] = ids[:, ::4]  # supervise a few positions
+    logits, loss = model(ids, mlm_labels=labels)
+    assert logits.shape == (3, 16, 40)
+    loss.backward()
+    assert _backward_ok(model)
+
+
+def test_bert_encode_and_pool():
+    model = BERT(BERTConfig(vocab_size=40, max_seq_len=32, dim=48, n_layers=2, num_heads=4))
+    ids = torch.randint(0, 40, (3, 16))
+    attn_mask = torch.ones(3, 16)
+    attn_mask[:, 12:] = 0  # pad the tail
+    seq = model.encode(ids, attention_mask=attn_mask)
+    assert seq.shape == (3, 16, 48)
+    assert model.pooled_output(seq).shape == (3, 48)
 
 
 def test_seq2seq_forward_backward():

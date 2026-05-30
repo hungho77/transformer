@@ -49,6 +49,28 @@ class ViTConfig:
 
 
 @dataclass
+class BERTConfig:
+    vocab_size: int
+    max_seq_len: int = 128
+    dim: int = 256
+    n_layers: int = 6
+    num_heads: int = 4
+    num_kv_heads: Optional[int] = None
+    head_dim: Optional[int] = None
+    num_token_types: int = 2          # segment embeddings; 0 disables them
+    attention_name: Union[str, list] = "mha"
+    ffn_type: str = "mlp"
+    ffn_mult: float = 4.0
+    norm_type: str = "layer"
+    pre_norm: bool = True             # original BERT is post-norm; pre-norm trains more stably
+    dropout: float = 0.1
+    bias: bool = True
+    pad_id: int = 0
+    tie_weights: bool = True
+    extra: dict = field(default_factory=dict)
+
+
+@dataclass
 class Seq2SeqConfig:
     src_vocab_size: int
     tgt_vocab_size: int
