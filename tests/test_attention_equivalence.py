@@ -42,3 +42,14 @@ def test_local_full_window_equals_mha():
     x = torch.randn(B, S, DIM)
     with torch.no_grad():
         assert torch.allclose(mha(x, is_causal=True), local(x, is_causal=True), atol=1e-5)
+
+
+@pytest.mark.parametrize("is_causal", [True, False])
+@pytest.mark.parametrize("window", [4, S])
+def test_local_flex_matches_banded_local(is_causal, window):
+    # The flex_attention block-mask backend must match the banded reference.
+    cfg = AttentionConfig(dim=DIM, num_heads=HEADS, window_size=window)
+    local, flex = _shared("local", "local_flex", cfg)
+    x = torch.randn(B, S, DIM)
+    with torch.no_grad():
+        assert torch.allclose(local(x, is_causal=is_causal), flex(x, is_causal=is_causal), atol=1e-5)

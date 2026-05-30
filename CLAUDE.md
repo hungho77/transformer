@@ -69,11 +69,15 @@ imports `models`. Key pieces:
   usable everywhere via `attention_name`.
 - **Equivalence is a tested invariant**: exact variants must match given shared
   weights — `mha == sdpa`, `gqa(num_kv_heads==num_heads) == mha`,
-  `local(window>=S) == mha` (see `tests/test_attention_equivalence.py`). Preserve
-  this when touching the SDP core or projection logic.
-- `linear` and `local` advertise limited mask support via `supports_mask` (no
-  arbitrary `FULL` masks). The reference `linear` causal path uses `cumsum`
-  (memory-heavy by design); `local` uses a banded mask (no real sparsity yet).
+  `local(window>=S) == mha`, `local_flex == local` (see
+  `tests/test_attention_equivalence.py`). Preserve this when touching the SDP
+  core or projection logic.
+- `linear`, `local`, and `local_flex` advertise limited mask support via
+  `supports_mask` (no arbitrary `FULL` masks). The reference `linear` causal path
+  uses `cumsum` (memory-heavy by design); `local` uses a banded mask (correct but
+  no sparsity savings); `local_flex` uses `flex_attention` block masks for true
+  block-sparsity and falls back to the banded path when flex is unavailable, an
+  explicit `attn_mask` is passed, or attention dropout is active.
 - `flash` requires CUDA + fp16/bf16 and falls back to SDPA otherwise; flash-attn
   is an optional dependency, never required.
 - This repo was previously a broken fork of victoresque/pytorch-template (MNIST
