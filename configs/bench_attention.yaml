@@ -1,0 +1,9 @@
+variants: [mha, sdpa, gqa, mqa, linear, local, flash]
+seq_lens: [256, 512, 1024, 2048]
+dim: 512
+num_heads: 8
+batch: 8
+dtype: float32
+is_causal: true
+warmup: 3
+iters: 10

@@ -1,0 +1,39 @@
+arch: seq2seq
+name: seq2seq_copy
+seed: 123
+device: auto
+epochs: 5
+max_steps: null
+batch_size: 128
+num_workers: 2
+grad_clip: 1.0
+amp: false
+log_interval: 50
+save_dir: saved
+
+data:
+  mode: copy
+  n_samples: 8192
+  seq_len: 12
+  n_symbols: 20
+
+model:
+  max_seq_len: 64
+  dim: 128
+  n_encoder_layers: 3
+  n_decoder_layers: 3
+  num_heads: 4
+  attention_name: mha
+  ffn_type: mlp
+  ffn_mult: 4.0
+  norm_type: layer
+  dropout: 0.0
+
+optimizer:
+  type: AdamW
+  lr: 0.0005
+  weight_decay: 0.01
+
+scheduler:
+  type: cosine_warmup
+  warmup_steps: 100
