@@ -74,16 +74,19 @@ def _free_memory(device):
         torch.cuda.synchronize()
 
 
-def format_table(rows) -> str:
-    widths = {c: max(len(c), *(len(_fmt(r[c])) for r in rows)) for c in _COLUMNS}
-    header = "  ".join(c.rjust(widths[c]) for c in _COLUMNS)
-    lines = [header, "  ".join("-" * widths[c] for c in _COLUMNS)]
+def format_table(rows, columns=None) -> str:
+    columns = columns or _COLUMNS
+    widths = {c: max(len(c), *(len(_fmt(r.get(c))) for r in rows)) for c in columns}
+    header = "  ".join(c.rjust(widths[c]) for c in columns)
+    lines = [header, "  ".join("-" * widths[c] for c in columns)]
     for r in rows:
-        lines.append("  ".join(_fmt(r[c]).rjust(widths[c]) for c in _COLUMNS))
+        lines.append("  ".join(_fmt(r.get(c)).rjust(widths[c]) for c in columns))
     return "\n".join(lines)
 
 
 def _fmt(v):
+    if isinstance(v, bool):
+        return "*" if v else ""
     if isinstance(v, float):
         return "nan" if v != v else f"{v:.2f}"
-    return str(v)
+    return "" if v is None else str(v)

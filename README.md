@@ -67,6 +67,32 @@ for simplicity, and `local` (banded mask) materializes the score matrix — use
 skips out-of-window blocks and saves memory at long sequences (CUDA-accelerated;
 falls back to the banded path when flex is unavailable).
 
+### Quality vs efficiency
+
+Speed/memory alone doesn't tell you what a cheaper variant *costs* in accuracy.
+This trains the same GPT under each attention and reports validation perplexity
+next to throughput and peak memory, marking the quality/cost Pareto frontier:
+
+```bash
+python examples/run_quality_bench.py --config configs/quality_gpt.yaml
+```
+
+```
+   variant   params  train_loss  val_loss  val_ppl  tokens_per_s  peak_mem_MB  pareto
+       mha  1783680        2.16      1.85     6.36     574420.80       776.69
+      sdpa  1783680        2.16      1.85     6.36     721347.53       561.10
+       gqa  1636224        2.16      1.84     6.29     722008.86       559.69       *
+       mqa  1537920        2.15      1.85     6.34     758183.07       517.56       *
+    linear  1783680        2.42      2.24     9.40     206523.57      1892.39
+     local  1783680        2.12      1.81     6.12     592234.93       776.41       *
+local_flex  1783680        2.12      1.81     6.12     592215.15       776.41       *
+```
+
+`mha == sdpa` quality (a fairness check); `gqa`/`mqa` cut params and memory at
+near-equal quality; `linear` is the clearest quality cost. Writes
+`saved/<name>/quality.{csv,md}`. GPT char-LM today; the harness takes a
+`build_model`/`loss_fn`, so ViT (accuracy) and BERT (MLM) can be added later.
+
 ## Layout
 
 ```
@@ -76,7 +102,7 @@ src/transformerlab/
   models/      base, dataclass configs, GPT, ViT, EncoderDecoder
   data/        char-level LM, vision, synthetic seq2seq tasks
   train/       task-agnostic Trainer, optim/schedule, YAML run config
-  bench/       latency/memory/FLOPs profiling + attention sweep
+  bench/       latency/memory/FLOPs sweep + quality-vs-efficiency harness
 configs/   YAML run configs        examples/  runnable train/sample/bench scripts
 tests/     shapes, causal mask, equivalence, layers, models, registry
 ```
@@ -102,6 +128,6 @@ via `attention_name: myattn`.
 ## Tests
 
 ```bash
-pytest -q          # 47 tests: shapes, causal-mask, equivalence, layers, models
+pytest -q          # 51 tests: shapes, causal-mask, equivalence, layers, models, bench
 flake8 src tests examples
 ```

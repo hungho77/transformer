@@ -26,12 +26,13 @@ def download_tiny_shakespeare(data_dir="data") -> str:
 
 
 class CharDataset(Dataset):
-    def __init__(self, text: str, block_size: int):
+    def __init__(self, text: str, block_size: int, stoi: dict | None = None):
         self.block_size = block_size
-        chars = sorted(set(text))
-        self.stoi = {c: i for i, c in enumerate(chars)}
+        # Reuse a provided vocab (e.g. so a val split shares the train vocab);
+        # otherwise build it from this text.
+        self.stoi = dict(stoi) if stoi is not None else {c: i for i, c in enumerate(sorted(set(text)))}
         self.itos = {i: c for c, i in self.stoi.items()}
-        self.vocab_size = len(chars)
+        self.vocab_size = len(self.stoi)
         self.data = torch.tensor([self.stoi[c] for c in text], dtype=torch.long)
 
     @classmethod
@@ -50,3 +51,14 @@ class CharDataset(Dataset):
     def __getitem__(self, idx):
         chunk = self.data[idx: idx + self.block_size + 1]
         return chunk[:-1], chunk[1:]
+
+
+def tiny_shakespeare_splits(block_size: int, val_frac: float = 0.1, data_dir="data"):
+    """Return (train_ds, val_ds) over a chronological split of tiny-shakespeare,
+    sharing a single vocab built from the full corpus."""
+    text = download_tiny_shakespeare(data_dir)
+    stoi = {c: i for i, c in enumerate(sorted(set(text)))}
+    cut = int(len(text) * (1.0 - val_frac))
+    train_ds = CharDataset(text[:cut], block_size, stoi=stoi)
+    val_ds = CharDataset(text[cut:], block_size, stoi=stoi)
+    return train_ds, val_ds
