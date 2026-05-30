@@ -16,7 +16,7 @@ and be benchmarked head-to-head.
 
 ```bash
 pip install -e ".[dev]"        # editable install + pytest/flake8
-pytest -q                      # full suite (~41 tests, CPU, ~1.5s)
+pytest -q                      # full suite (~51 tests, CPU, ~4s)
 pytest tests/test_attention_equivalence.py -q   # single test file
 flake8 src tests examples      # lint (config in .flake8, max-line 120)
 
@@ -24,7 +24,8 @@ python examples/train_gpt.py --config configs/gpt_char_tiny.yaml [--steps N] [--
 python examples/sample_gpt.py --ckpt saved/gpt_char_tiny --prompt "ROMEO:"
 python examples/train_vit.py --config configs/vit_cifar10.yaml [--dataset fake]
 python examples/train_seq2seq.py --config configs/seq2seq_copy.yaml
-python examples/run_bench.py --config configs/bench_attention.yaml
+python examples/run_bench.py --config configs/bench_attention.yaml          # speed/memory/FLOPs sweep
+python examples/run_quality_bench.py --config configs/quality_gpt.yaml       # val-ppl vs throughput/memory + Pareto
 ```
 
 `train_vit.py --dataset fake` avoids the CIFAR-10 download (random images) for quick smoke runs.
@@ -60,6 +61,12 @@ imports `models`. Key pieces:
 - **`train/trainer.py`**: task-agnostic loop. The task is injected as
   `loss_fn(model, batch) -> (loss, metrics_dict)` — see the `lm_loss` /
   `classification_loss` / `seq2seq_loss` closures in the example scripts.
+- **`bench/`**: `sweep.py` profiles attention modules (latency/peak-mem/FLOPs);
+  `quality.py` trains the same GPT under each variant and reports val perplexity
+  vs throughput/memory with a Pareto flag (`mark_pareto`). Both reuse
+  `_free_memory` (gc + `empty_cache` + `torch._dynamo.reset()`) between rows so
+  the compiled `local_flex` kernel doesn't OOM later rows; `measure_flops`
+  degrades to `nan` for ops it can't trace rather than aborting a row.
 
 ## Conventions & gotchas
 
