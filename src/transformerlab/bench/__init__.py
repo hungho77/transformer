@@ -8,6 +8,7 @@ from .quality import (
     train_and_evaluate,
 )
 from .longctx import format_longctx_table, run_longctx_sweep
+from .decode import format_decode_table, run_decode_sweep, benchmark_decode
 
 __all__ = [
     "measure_flops",
@@ -23,4 +24,7 @@ __all__ = [
     "train_and_evaluate",
     "format_longctx_table",
     "run_longctx_sweep",
+    "format_decode_table",
+    "run_decode_sweep",
+    "benchmark_decode",
 ]

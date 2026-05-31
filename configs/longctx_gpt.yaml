@@ -6,7 +6,7 @@ train_steps: 100
 batch_size: 16
 num_workers: 2
 
-variants: [mha, sdpa, gqa, mqa, linear, local, local_flex]
+variants: [mha, sdpa, gqa, mqa, linear, local, local_flex, mla]
 ctx_lens: [512, 1024, 2048, 4096]
 
 model:

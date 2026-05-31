@@ -17,7 +17,7 @@ def _backward_ok(model):
     return any(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
 
 
-@pytest.mark.parametrize("attention_name", ["mha", "sdpa", "gqa", "linear", "local"])
+@pytest.mark.parametrize("attention_name", ["mha", "sdpa", "gqa", "linear", "local", "mla"])
 def test_gpt_forward_backward(attention_name):
     kw = dict(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4, attention_name=attention_name)
     if attention_name == "gqa":

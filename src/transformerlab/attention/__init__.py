@@ -9,7 +9,7 @@ from .core import ProjAttention, make_causal_mask, make_sliding_window_mask, rep
 from .registry import ATTENTION_REGISTRY, available_attentions, build_attention, register_attention
 
 # Import variant modules for their registration side effects.
-from . import mha, sdpa, mqa_gqa, linear, local, flash  # noqa: E402,F401
+from . import mha, sdpa, mqa_gqa, linear, local, flash, mla  # noqa: E402,F401
 
 __all__ = [
     "AttentionBase",

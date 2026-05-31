@@ -73,6 +73,9 @@ imports `models`. Key pieces:
   `longctx.py` is a thin wrapper over `run_quality_sweep` that sweeps
   `model.max_seq_len` to compare variants as context length grows (where
   `mha`/`local` OOM and `sdpa`/`local_flex`/`mqa` keep running).
+  `decode.py` drives GPT's incremental-decode path (`_forward_cached` + per-layer
+  `KVCache`) and reports **actual cached bytes** + decode throughput — the regime
+  where `mqa`/`gqa` (fewer cached KV heads) and `mla` (compressed latent) win.
 
 ## Conventions & gotchas
 
@@ -93,6 +96,15 @@ imports `models`. Key pieces:
   explicit `attn_mask` is passed, or attention dropout is active.
 - `flash` requires CUDA + fp16/bf16 and falls back to SDPA otherwise; flash-attn
   is an optional dependency, never required.
+- `mla` (multi-head latent attention) subclasses `AttentionBase` directly (not
+  `ProjAttention`) — it has its own projection structure (KV down/up to a small
+  latent `c_KV`, decoupled per-head RoPE with a shared rope key) and carries its
+  own RoPE (can't import `layers/` — that's circular). Its latent dims are read
+  from `AttentionConfig.extra` (kv_latent_dim/q_latent_dim/nope/rope/v_head_dim);
+  GPT forwards `GPTConfig.extra` into the block. It manages position itself, so
+  use with `use_rotary=True` (GPT then adds no absolute pos emb) and the model's
+  `rotary` arg is ignored. The KV cache stores only `c_KV`+shared `k_R`, not
+  per-head K/V — its win shows up in generation memory, not single-pass training.
 - This repo was previously a broken fork of victoresque/pytorch-template (MNIST
   demo). All of that was deleted; only `utils/util.py` (now pandas-free,
   `src/transformerlab/utils/`), `.flake8`, and `.gitignore` were carried over.

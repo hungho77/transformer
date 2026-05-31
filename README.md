@@ -28,10 +28,11 @@ Swap attention by changing one config field (`attention_name`):
 | `linear` | feature-map linear attention (O(S·d²))       | — (cumsum causal) |
 | `local`  | sliding-window, banded mask (set `window_size`) | ✓ (banded mask) |
 | `local_flex` | sliding-window via `flex_attention` block mask (true sparsity) | — (flex kernel) |
+| `mla`    | multi-head latent attention (compressed KV cache + decoupled RoPE) | — (own kernel) |
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig
-print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mqa','sdpa']
+print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mla','mqa','sdpa']
 attn = build_attention("gqa", AttentionConfig(dim=512, num_heads=8, num_kv_heads=2))
 ```
 
@@ -122,6 +123,32 @@ linear        794    1567    3112    6202      12.58   (cheap FLOPs, weak qualit
 `local_flex` gives the best perplexity at 4096 using ~4× less memory than `mha`
 would; `mha`/`local` can't run there at all. Writes `saved/<name>/longctx.{csv,md}`.
 
+### Decode / KV cache
+
+Generation is bottlenecked by the **KV cache**, not prefill. This drives each
+variant's incremental decode and reports the actual cached bytes, prefill
+latency, decode throughput, and peak memory:
+
+```bash
+python examples/run_decode_bench.py --config configs/decode_gpt.yaml
+```
+
+```
+variant   params    kv_cache_MB  prefill_ms  decode_tok_s  peak_mem_MB
+mha       25305600     96.00        4.04        1473        206.70
+sdpa      25305600     96.00        3.58        1589        206.70
+gqa       23208448     48.00        3.47        1428        157.70   (½ the KV heads)
+mqa       21635584     12.00        3.25        1471        116.67   (one KV head)
+mla       24920576     27.00        4.62        1053        149.99   (compressed latent)
+```
+
+The cache size follows what each variant stores per token (K/V are cached
+*before* the GQA/MQA head-broadcast): `mha`/`sdpa` keep full K+V; `gqa` halves
+it; `mqa` keeps one KV head; `mla` caches a compressed latent + shared rope key.
+**MLA shrinks the cache ~3.5× vs MHA** while keeping near-MHA quality (see the
+quality bench), trading a little decode speed for it; `mqa` shrinks it most but
+costs more quality. Writes `saved/<name>/decode.{csv,md}`.
+
 ## Layout
 
 ```
@@ -131,7 +158,7 @@ src/transformerlab/
   models/      base, dataclass configs, GPT, ViT, EncoderDecoder, BERT
   data/        char-level LM, vision, synthetic seq2seq, masked-LM tasks
   train/       task-agnostic Trainer, optim/schedule, YAML run config
-  bench/       latency/memory/FLOPs sweep + quality and long-context harnesses
+  bench/       latency/memory/FLOPs sweep + quality, long-context, decode harnesses
 configs/   YAML run configs        examples/  runnable train/sample/bench scripts
 tests/     shapes, causal mask, equivalence, layers, models, registry
 ```
