@@ -84,6 +84,16 @@ imports `models`. Key pieces:
 
 ## Conventions & gotchas
 
+- **Math-first comments (required)**: every implementation that realises a
+  mathematical operation (attention kernels, feature maps, norms, rotary,
+  positional schemes, loss/optim math) MUST carry comments stating the
+  underlying equation so the code is readable against the math. Use a Sphinx
+  `:math:` docstring for the variant/function summary and inline `#` comments
+  tying each tensor op to a symbol — e.g. `# scores = QKᵀ / √d_k` above the
+  matmul, `# softmax over keys (last dim)` above the softmax. Name tensors after
+  their symbols where practical (`scale = 1/√d`, `phi_q`, `c_KV`). `linear.py`
+  and `mla.py` are the reference style. Keep equations correct when refactoring;
+  a comment that drifts from the code is a bug.
 - **Adding an attention variant**: subclass `ProjAttention`, implement `_attend`
   (call `self._maybe_repeat_kv(k, v)` first to support GQA/MQA), decorate with
   `@register_attention`, and add its import to `attention/__init__.py`. It is then
