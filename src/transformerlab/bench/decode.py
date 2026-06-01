@@ -28,6 +28,10 @@ from .sweep import _free_memory, format_table
 
 DECODE_COLUMNS = ["variant", "params", "kv_cache_MB", "prefill_ms", "decode_tok_s", "peak_mem_MB"]
 
+_DTYPES = {"float32": torch.float32, "fp32": torch.float32,
+           "bfloat16": torch.bfloat16, "bf16": torch.bfloat16,
+           "float16": torch.float16, "fp16": torch.float16}
+
 
 def _kv_cache_mb(caches):
     # Sum the bytes actually held in every layer's KV cache (the decode footprint).
@@ -41,17 +45,20 @@ def _kv_cache_mb(caches):
 
 @torch.no_grad()
 def benchmark_decode(variant, *, vocab_size, model_cfg, prompt_len, decode_len, batch,
-                     device, num_heads, warmup=2, seed=123):
+                     device, num_heads, dtype="float32", warmup=2, seed=123):
     set_seed(seed)
+    torch_dtype = _DTYPES[dtype]                              # cache bytes (element_size) scale with this
     kw = {k: v for k, v in model_cfg.items() if k != "attention_name"}
     kw["attention_name"] = variant
     kw["max_seq_len"] = max(kw.get("max_seq_len", 0), prompt_len + decode_len)
     if variant == "gqa" and "num_kv_heads" not in kw:
         kw["num_kv_heads"] = max(1, num_heads // 2)
-    if variant in ("local", "local_flex") and not kw.get("window_size"):
+    if variant in ("local", "local_flex", "sink") and not kw.get("window_size"):
         kw["window_size"] = max(8, (prompt_len + decode_len) // 4)
 
-    model = GPT(GPTConfig(vocab_size=vocab_size, **kw)).to(device).eval()
+    # Cast the whole model to the inference dtype so K/V are cached at that width
+    # (bf16/fp16 halves kv_cache_MB) and flash/sdpa use their fp16/bf16 kernels.
+    model = GPT(GPTConfig(vocab_size=vocab_size, **kw)).to(device=device, dtype=torch_dtype).eval()
     params = sum(p.numel() for p in model.parameters())
     prompt = torch.randint(0, vocab_size, (batch, prompt_len), device=device)
 
@@ -100,18 +107,20 @@ def benchmark_decode(variant, *, vocab_size, model_cfg, prompt_len, decode_len, 
 
 
 def run_decode_sweep(*, variants=None, model=None, prompt_len=256, decode_len=256, batch=1,
-                     vocab_size=256, seed=123, device=None, **kw):
+                     vocab_size=256, seed=123, device=None, dtype="float32", **kw):
     variants = variants or available_attentions()
     model = dict(model or {})
     num_heads = model.get("num_heads", 4)
     device = torch.device(device) if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if dtype not in ("float32", "fp32") and device.type != "cuda":
+        dtype = "float32"                                    # fp16/bf16 decode only meaningful on CUDA
     rows = []
     for variant in variants:
         try:
             rows.append(benchmark_decode(
                 variant, vocab_size=vocab_size, model_cfg=model, prompt_len=prompt_len,
                 decode_len=decode_len, batch=batch, device=device, num_heads=num_heads,
-                seed=seed, **kw,
+                dtype=dtype, seed=seed, **kw,
             ))
         except Exception as exc:  # noqa: BLE001
             rows.append({**{c: float("nan") for c in DECODE_COLUMNS}, "variant": variant})

@@ -46,6 +46,7 @@ class Trainer:
         scheduler=None,
         grad_clip: float = 1.0,
         amp: bool = False,
+        amp_dtype: str = "fp32",
         accum_steps: int = 1,
         log_interval: int = 50,
         eval_interval: int = 0,
@@ -64,8 +65,20 @@ class Trainer:
         self.loss_fn = loss_fn
         self.scheduler = scheduler
         self.grad_clip = grad_clip
-        self.amp = amp and device.type == "cuda"
-        self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp)
+        # Resolve mixed precision. amp_dtype selects the autocast dtype; the
+        # legacy amp=True flag is kept as a back-compat alias for fp16.
+        _dtypes = {"fp32": None, "float32": None,
+                   "bf16": torch.bfloat16, "bfloat16": torch.bfloat16,
+                   "fp16": torch.float16, "float16": torch.float16}
+        self.autocast_dtype = _dtypes.get(amp_dtype, None)
+        if self.autocast_dtype is None and amp:           # amp=True, dtype unset -> fp16
+            self.autocast_dtype = torch.float16
+        self.amp_enabled = self.autocast_dtype is not None and device.type == "cuda"
+        # GradScaler is only needed for fp16: its 10-bit mantissa underflows small
+        # grads, so we scale the loss up before backward. bf16 keeps fp32's 8-bit
+        # exponent range, so gradients don't underflow and no scaling is required.
+        self.use_scaler = self.amp_enabled and self.autocast_dtype == torch.float16
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_scaler)
         self.accum_steps = max(1, accum_steps)
         self.log_interval = log_interval
         self.eval_interval = eval_interval
@@ -81,15 +94,17 @@ class Trainer:
     def _micro_step(self, batch):
         # One micro-batch: forward + scaled backward (grads accumulate; no opt step).
         batch = _to_device(batch, self.device)
-        with torch.autocast(self.device.type, enabled=self.amp):
+        with torch.autocast(self.device.type, dtype=self.autocast_dtype, enabled=self.amp_enabled):
             loss, metrics = self.loss_fn(self.model, batch)
         # Divide by accum_steps so the summed grads equal the mean over the
         # effective (accum_steps · micro) batch, matching a single big batch.
+        # scaler is a no-op unless fp16 (use_scaler) -> bf16/fp32 backward unchanged.
         self.scaler.scale(loss / self.accum_steps).backward()
         return loss.item(), metrics
 
     def _optimizer_step(self):
         # Apply the accumulated grads: unscale -> clip -> step -> zero -> schedule.
+        # unscale_ only does work when the scaler is enabled (fp16); a no-op for bf16/fp32.
         if self.grad_clip:
             self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
@@ -165,7 +180,8 @@ class Trainer:
         tracker = MetricTracker("val_loss")
         for batch in self.valid_loader:
             batch = _to_device(batch, self.device)
-            loss, metrics = self.loss_fn(self.model, batch)
+            with torch.autocast(self.device.type, dtype=self.autocast_dtype, enabled=self.amp_enabled):
+                loss, metrics = self.loss_fn(self.model, batch)  # eval at the same precision as training
             tracker.update("val_loss", loss.item())
             for k, v in metrics.items():
                 tracker.update("val_" + k, v)

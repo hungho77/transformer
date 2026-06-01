@@ -3,9 +3,10 @@ save_dir: saved
 seed: 123
 device: auto
 
-# KV-cache size is the interesting axis here: mha/sdpa cache full K+V,
+# KV-cache size is the interesting axis here: mha/sdpa/flash cache full K+V,
 # gqa fewer heads, mqa one head, mla a compressed latent.
-variants: [mha, sdpa, gqa, mqa, mla]
+variants: [mha, sdpa, flash, gqa, mqa, mla]
+dtype: bfloat16          # realistic inference dtype; halves cached bytes and engages flash/sdpa fp16 kernels
 prompt_len: 256
 decode_len: 512
 batch: 4

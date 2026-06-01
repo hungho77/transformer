@@ -28,6 +28,8 @@ def main():
     ap.add_argument("--steps", type=int, default=None, help="override max_steps")
     ap.add_argument("--attention", default=None, help="override attention_name")
     ap.add_argument("--resume", default=None, help="checkpoint path to resume from")
+    ap.add_argument("--precision", default=None, choices=["fp32", "bf16", "fp16"],
+                    help="override mixed-precision (autocast) dtype")
     args = ap.parse_args()
 
     cfg = load_run_config(args.config)
@@ -37,6 +39,8 @@ def main():
         cfg.model["attention_name"] = args.attention
     if args.resume is not None:
         cfg.resume = args.resume
+    if args.precision is not None:
+        cfg.amp_dtype = args.precision
 
     set_seed(cfg.seed)
     device, _ = prepare_device(0 if cfg.device == "cpu" else 1)
@@ -58,7 +62,8 @@ def main():
 
     trainer = Trainer(
         model, optimizer, train_loader, device, loss_fn=lm_loss, valid_loader=val_loader,
-        scheduler=scheduler, grad_clip=cfg.grad_clip, amp=cfg.amp, accum_steps=cfg.accum_steps,
+        scheduler=scheduler, grad_clip=cfg.grad_clip, amp=cfg.amp, amp_dtype=cfg.amp_dtype,
+        accum_steps=cfg.accum_steps,
         log_interval=cfg.log_interval, eval_interval=cfg.eval_interval, save_dir=cfg.save_dir,
         name=cfg.name, monitor=cfg.monitor, mode=cfg.mode, patience=cfg.patience, save_best=cfg.save_best,
     )

@@ -51,7 +51,7 @@ def main():
 
     trainer = Trainer(
         model, optimizer, loader, device, loss_fn=classification_loss, scheduler=scheduler,
-        grad_clip=cfg.grad_clip, amp=cfg.amp, log_interval=cfg.log_interval,
+        grad_clip=cfg.grad_clip, amp=cfg.amp, amp_dtype=cfg.amp_dtype, log_interval=cfg.log_interval,
         save_dir=cfg.save_dir, name=cfg.name,
     )
     trainer.train(epochs=cfg.epochs, max_steps=cfg.max_steps)

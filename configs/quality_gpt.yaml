@@ -6,7 +6,7 @@ train_steps: 400
 batch_size: 64
 num_workers: 2
 
-variants: [mha, sdpa, gqa, mqa, linear, local, local_flex, mla]
+variants: [mha, sdpa, flash, gqa, mqa, linear, local, local_flex, mla]
 
 data:
   val_frac: 0.1

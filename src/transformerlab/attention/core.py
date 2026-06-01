@@ -57,6 +57,30 @@ def make_sliding_window_mask(seq_q: int, seq_k: int, window: int, device, causal
     return left & right                                            # keep keys inside the band
 
 
+def make_sink_window_mask(seq_q: int, seq_k: int, window: int, sink_size: int,
+                          device, causal: bool = True) -> Tensor:
+    """Banded mask + attention sinks [seq_q, seq_k]; True = allowed (StreamingLLM).
+
+    StreamingLLM (Xiao et al., 2023) keeps the recent window *and* the first
+    ``sink_size`` "sink" tokens, which softmax dumps probability mass onto:
+
+        keep[i, j] = (j < sink_size)            # always attend to the sink tokens
+                     OR (i-window+1 ≤ j ≤ i)     # plus the sliding window
+
+    intersected with causality (j ≤ i) so no token sees the future. Keeping the
+    sinks is what lets a *fixed* cache (sinks + last ``window``) hold quality as
+    the stream grows past the window — pure sliding window collapses without them.
+    """
+    keep = make_sliding_window_mask(seq_q, seq_k, window, device, causal=causal)  # recent window band
+    k_idx = torch.arange(seq_k, device=device).unsqueeze(0)        # key positions [1, seq_k]
+    sink_cols = k_idx < sink_size                                  # j < sink_size -> a sink token
+    if causal:
+        offset = seq_k - seq_q                                     # align queries to the end of the key axis
+        q_idx = torch.arange(seq_q, device=device).unsqueeze(1) + offset  # absolute query positions [seq_q, 1]
+        sink_cols = sink_cols & (k_idx <= q_idx)                   # sinks still obey causality (j ≤ i)
+    return keep | sink_cols                                        # union: window ∪ (causal) sinks
+
+
 def repeat_kv(x: Tensor, n_rep: int) -> Tensor:
     """[B, n_kv, S, d] -> [B, n_kv * n_rep, S, d].
 

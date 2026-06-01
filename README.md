@@ -14,6 +14,17 @@ pip install -e ".[dev]"     # + pytest, flake8
 pip install -e ".[flash]"   # + flash-attn (optional CUDA backend)
 ```
 
+On a fresh CUDA server, `setup_env.sh` creates a venv, installs the CUDA build
+of PyTorch, and (optionally) compiles flash-attn:
+
+```bash
+bash setup_env.sh --dev          # venv + torch + transformerlab + pytest/flake8
+bash setup_env.sh --flash --dev  # also builds flash-attn (CUDA kernel, ~15 min)
+```
+
+See [INSTALL.md](INSTALL.md) for the full guide (manual steps, troubleshooting,
+H100 notes). Benchmarks below were run on an H100 in `bfloat16`.
+
 ## Attention variants
 
 Swap attention by changing one config field (`attention_name`):
@@ -28,11 +39,12 @@ Swap attention by changing one config field (`attention_name`):
 | `linear` | feature-map linear attention (O(S·d²))       | — (cumsum causal) |
 | `local`  | sliding-window, banded mask (set `window_size`) | ✓ (banded mask) |
 | `local_flex` | sliding-window via `flex_attention` block mask (true sparsity) | — (flex kernel) |
+| `sink`   | StreamingLLM: first-k sink tokens + sliding window (set `window_size`, `extra.sink_size`) | ✓ (banded mask) |
 | `mla`    | multi-head latent attention (compressed KV cache + decoupled RoPE) | — (own kernel) |
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig
-print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mla','mqa','sdpa']
+print(available_attentions())   # ['flash','gqa','linear','local','local_flex','mha','mla','mqa','sdpa','sink']
 attn = build_attention("gqa", AttentionConfig(dim=512, num_heads=8, num_kv_heads=2))
 ```
 
@@ -106,19 +118,23 @@ python examples/run_quality_bench.py --config configs/quality_gpt.yaml
 
 ```
    variant   params  train_loss  val_loss  val_ppl  tokens_per_s  peak_mem_MB  pareto
-       mha  1783680        2.16      1.85     6.36     574420.80       776.69
-      sdpa  1783680        2.16      1.85     6.36     721347.53       561.10
-       gqa  1636224        2.16      1.84     6.29     722008.86       559.69       *
-       mqa  1537920        2.15      1.85     6.34     758183.07       517.56       *
-    linear  1783680        2.42      2.24     9.40     206523.57      1892.39
-     local  1783680        2.12      1.81     6.12     592234.93       776.41       *
-local_flex  1783680        2.12      1.81     6.12     592215.15       776.41       *
+       mha  1783680        2.16      1.82     6.20     593944.14       824.56
+      sdpa  1783680        2.16      1.84     6.29     745674.18       609.25
+     flash  1783680        2.16      1.84     6.29     765725.11       609.25
+       gqa  1636224        2.16      1.83     6.25     569726.59       607.56
+       mqa  1537920        2.15      1.81     6.12     649212.75       564.94       *
+    linear  1783680        2.41      2.24     9.40     395539.02      1939.77
+     local  1783680        2.12      1.82     6.15     419378.65       824.56
+local_flex  1783680        2.12      1.82     6.15     390446.30       824.56
+       mla  1760640        2.18      1.86     6.44     317852.11       896.24
 ```
 
-`mha == sdpa` quality (a fairness check); `gqa`/`mqa` cut params and memory at
-near-equal quality; `linear` is the clearest quality cost. Writes
-`saved/<name>/quality.{csv,md}`. GPT char-LM today; the harness takes a
-`build_model`/`loss_fn`, so ViT (accuracy) and BERT (MLM) can be added later.
+`mha == sdpa == flash` quality (a fairness check — same math, different kernels);
+`gqa`/`mqa` cut params and memory at near-equal quality (`mqa` is Pareto-optimal
+here, lowest memory at best ppl); `local`/`local_flex` edge out full attention on
+this tiny char-LM; `linear` is the clearest quality cost. Run in `bfloat16` on an
+H100. Writes `saved/<name>/quality.{csv,md}`. GPT char-LM today; the harness takes
+a `build_model`/`loss_fn`, so ViT (accuracy) and BERT (MLM) can be added later.
 
 ### Long context
 
@@ -130,21 +146,37 @@ what quality and memory:
 python examples/run_longctx_bench.py --config configs/longctx_gpt.yaml
 ```
 
-Peak memory (MB) per context length — `mha`/`local` (dense score matrix) grow
-quadratically and OOM at 4096, while the efficient variants scale and keep going:
+Peak memory (MB) per context length — `mha`/`local`/`sink` materialize the dense
+S×S score matrix so memory grows quadratically, while the fused/sparse variants
+stay roughly linear. (Small model — dim 128, 2 layers — so all variants still fit
+on an 80 GB H100 here; the memory *gap* is the point, ~14× at 4096.)
 
 ```
-variant       512    1024    2048    4096      val_ppl@4096
-mha           442    1504    5551    OOM       —
-local         442    1504    5551    OOM       —      (banded mask: no savings)
-sdpa          194     366     712    1389      10.57
-mqa           181     342     664    1293      10.77
-local_flex    202     382     744    1453      10.23   (best quality)
-linear        794    1567    3112    6202      12.58   (cheap FLOPs, weak quality)
+variant       512    1024    2048     4096      val_ppl@4096
+mha           490    1552    5599    21385      10.57
+local         490    1552    5599    21385      10.23   (banded mask: no savings)
+sink          490    1552    5599    21385      10.57   (sinks+window, dense kernel)
+sdpa          241     414     760     1451      10.57
+flash         241     414     760     1451      10.57
+mqa           229     390     711     1354      10.77
+local_flex    249     430     792     1515      10.23   (best quality)
+linear        842    1614    3160     6250      12.58   (cheap FLOPs, weak quality)
 ```
 
-`local_flex` gives the best perplexity at 4096 using ~4× less memory than `mha`
-would; `mha`/`local` can't run there at all. Writes `saved/<name>/longctx.{csv,md}`.
+`sdpa`/`flash` deliver `mha`'s exact quality (10.57) at **~14× less memory** at
+4096; `local_flex` gives the best perplexity (10.23) via true block-sparsity at
+similar memory. `mha`/`local`/`sink` blow up quadratically and would OOM first on
+a real-scale model. `flash` and `sdpa` are memory-identical here (both fused, no
+score matrix). Writes `saved/<name>/longctx.{csv,md}`.
+
+> **Note on `sink`:** StreamingLLM's memory win comes from *evicting* tokens
+> outside the sink+window from the KV cache during decoding. This repo's `sink`
+> implements the attention *pattern* (a banded mask + sink columns) on the
+> shared dense kernel, so in single-pass prefill it costs exactly what `mha`/
+> `local` do — the table above shows that honestly (it tracks `mha` quality
+> because with this window the kept set covers most of the short contexts). It's
+> an educational variant for the sink concept; a bounded streaming cache would
+> need cache eviction in `KVCache`, which is not yet implemented.
 
 ### Decode / KV cache
 
@@ -157,20 +189,23 @@ python examples/run_decode_bench.py --config configs/decode_gpt.yaml
 ```
 
 ```
-variant   params    kv_cache_MB  prefill_ms  decode_tok_s  peak_mem_MB
-mha       25305600     96.00        4.04        1473        206.70
-sdpa      25305600     96.00        3.58        1589        206.70
-gqa       23208448     48.00        3.47        1428        157.70   (½ the KV heads)
-mqa       21635584     12.00        3.25        1471        116.67   (one KV head)
-mla       24920576     27.00        4.62        1053        149.99   (compressed latent)
+variant    params    kv_cache_MB  prefill_ms  decode_tok_s  peak_mem_MB
+mha        25305600     48.00        4.65        1251.55       131.29
+sdpa       25305600     48.00        2.92        1266.16       131.29
+flash      25305600     48.00        3.74        1038.24       131.29   (full K/V, like sdpa)
+gqa        23208448     24.00        3.31         933.83       108.35   (½ the KV heads)
+mqa        21635584      6.00        4.03        1102.23        86.27   (one KV head)
+mla        24920576     13.50        5.01         862.64       102.94   (compressed latent)
 ```
 
 The cache size follows what each variant stores per token (K/V are cached
-*before* the GQA/MQA head-broadcast): `mha`/`sdpa` keep full K+V; `gqa` halves
-it; `mqa` keeps one KV head; `mla` caches a compressed latent + shared rope key.
-**MLA shrinks the cache ~3.5× vs MHA** while keeping near-MHA quality (see the
-quality bench), trading a little decode speed for it; `mqa` shrinks it most but
-costs more quality. Writes `saved/<name>/decode.{csv,md}`.
+*before* the GQA/MQA head-broadcast): `mha`/`sdpa`/`flash` keep full K+V; `gqa`
+halves it; `mqa` keeps one KV head; `mla` caches a compressed latent + shared
+rope key. **MQA shrinks the cache 8× vs MHA** (one KV head) and **MLA ~3.5×**
+while keeping near-MHA quality (see the quality bench). `flash` caches full K/V
+(same bytes as `sdpa`); its single-token-step kernel has no edge over `sdpa` at
+decode here. Run in `bfloat16` (`dtype: bfloat16`), so all `kv_cache_MB` are half
+their fp32 size. Writes `saved/<name>/decode.{csv,md}`.
 
 ## Layout
 

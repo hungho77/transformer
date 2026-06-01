@@ -20,6 +20,7 @@ class RunConfig:
     num_workers: int = 2
     grad_clip: float = 1.0
     amp: bool = False
+    amp_dtype: str = "fp32"         # "fp32" | "bf16" | "fp16": autocast precision for training/eval
     accum_steps: int = 1            # micro-batches per optimizer step (effective batch = batch_size·accum_steps)
     log_interval: int = 50
     eval_interval: int = 0          # 0 disables periodic eval

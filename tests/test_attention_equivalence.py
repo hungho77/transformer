@@ -44,6 +44,26 @@ def test_local_full_window_equals_mha():
         assert torch.allclose(mha(x, is_causal=True), local(x, is_causal=True), atol=1e-5)
 
 
+def test_sink_no_sinks_full_window_equals_local():
+    # sink with sink_size=0 and window>=S has no sink columns and a full band,
+    # so its keep-mask collapses to local's full-causal mask.
+    cfg = AttentionConfig(dim=DIM, num_heads=HEADS, window_size=S, extra={"sink_size": 0})
+    local, sink = _shared("local", "sink", cfg)
+    x = torch.randn(B, S, DIM)
+    with torch.no_grad():
+        assert torch.allclose(local(x, is_causal=True), sink(x, is_causal=True), atol=1e-5)
+
+
+def test_sink_keeps_sinks_and_window():
+    # With a narrow window, sink must attend to BOTH the first sink_size keys and
+    # the recent window — strictly more keys than plain local, so outputs differ.
+    cfg = AttentionConfig(dim=DIM, num_heads=HEADS, window_size=4, extra={"sink_size": 2})
+    local, sink = _shared("local", "sink", cfg)
+    x = torch.randn(B, S, DIM)
+    with torch.no_grad():
+        assert not torch.allclose(local(x, is_causal=True), sink(x, is_causal=True), atol=1e-4)
+
+
 @pytest.mark.parametrize("is_causal", [True, False])
 @pytest.mark.parametrize("window", [4, S])
 def test_local_flex_matches_banded_local(is_causal, window):
