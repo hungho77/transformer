@@ -16,11 +16,11 @@ and be benchmarked head-to-head.
 
 ```bash
 pip install -e ".[dev]"        # editable install + pytest/flake8
-pytest -q                      # full suite (~55 tests, CPU, ~4s)
+pytest -q                      # full suite (~73 tests, CPU, ~5s)
 pytest tests/test_attention_equivalence.py -q   # single test file
 flake8 src tests examples      # lint (config in .flake8, max-line 120)
 
-python examples/train_gpt.py --config configs/gpt_char_tiny.yaml [--steps N] [--attention NAME]
+python examples/train_gpt.py --config configs/gpt_char_tiny.yaml [--steps N] [--attention NAME] [--precision bf16]
 python examples/sample_gpt.py --ckpt saved/gpt_char_tiny --prompt "ROMEO:"
 python examples/train_vit.py --config configs/vit_cifar10.yaml [--dataset fake]
 python examples/train_seq2seq.py --config configs/seq2seq_copy.yaml
@@ -67,8 +67,13 @@ imports `models`. Key pieces:
   Supports gradient accumulation (`accum_steps`; step counts are optimizer
   steps), full-state `save_checkpoint`/`load_checkpoint` (model+opt+sched+scaler
   +RNG+step) for `--resume`, and best-ckpt + early stop (`monitor`/`mode`/
-  `patience`/`save_best`). GPT honors `GPTConfig.grad_checkpoint` (wraps blocks
-  in `torch.utils.checkpoint`, training-only) for ~3.7x activation-memory savings.
+  `patience`/`save_best`). Mixed precision via `amp_dtype`
+  (`"fp32"`/`"bf16"`/`"fp16"`; `--precision` on `train_gpt.py`): autocasts
+  train+eval, and uses `GradScaler` only for fp16 (bf16 keeps fp32's exponent
+  range so it needs no loss scaling — the scaler stays disabled and the
+  grad-accum path is unchanged). GPT honors `GPTConfig.grad_checkpoint` (wraps
+  blocks in `torch.utils.checkpoint`, training-only) for ~3.7x activation-memory
+  savings.
 - **`bench/`**: `sweep.py` profiles attention modules (latency/peak-mem/FLOPs);
   `quality.py` trains the same GPT under each variant and reports val perplexity
   vs throughput/memory with a Pareto flag (`mark_pareto`). Both reuse
@@ -76,8 +81,10 @@ imports `models`. Key pieces:
   the compiled `local_flex` kernel doesn't OOM later rows; `measure_flops`
   degrades to `nan` for ops it can't trace rather than aborting a row.
   `longctx.py` is a thin wrapper over `run_quality_sweep` that sweeps
-  `model.max_seq_len` to compare variants as context length grows (where
-  `mha`/`local` OOM and `sdpa`/`local_flex`/`mqa` keep running).
+  `model.max_seq_len` to compare variants as context length grows: `mha`/`local`/
+  `sink` materialize the dense S×S scores (quadratic memory; OOM first at scale)
+  while `sdpa`/`local_flex`/`mqa`/`flash` stay roughly linear (~14x less memory at
+  ctx 4096 in the bundled bf16 bench).
   `decode.py` drives GPT's incremental-decode path (`_forward_cached` + per-layer
   `KVCache`) and reports **actual cached bytes** + decode throughput — the regime
   where `mqa`/`gqa` (fewer cached KV heads) and `mla` (compressed latent) win.
@@ -103,12 +110,19 @@ imports `models`. Key pieces:
   `local(window>=S) == mha`, `local_flex == local` (see
   `tests/test_attention_equivalence.py`). Preserve this when touching the SDP
   core or projection logic.
-- `linear`, `local`, and `local_flex` advertise limited mask support via
+- `linear`, `local`, `local_flex`, and `sink` advertise limited mask support via
   `supports_mask` (no arbitrary `FULL` masks). The reference `linear` causal path
   uses `cumsum` (memory-heavy by design); `local` uses a banded mask (correct but
   no sparsity savings); `local_flex` uses `flex_attention` block masks for true
   block-sparsity and falls back to the banded path when flex is unavailable, an
   explicit `attn_mask` is passed, or attention dropout is active.
+- `sink` (StreamingLLM attention sinks) keeps the first `extra["sink_size"]`
+  tokens *plus* the last `window_size` keys: `make_sink_window_mask` (in
+  `core.py`) is `make_sliding_window_mask` unioned with the sink columns
+  (causally). It runs on the dense `sdpa_core` kernel, so it costs the same as
+  `local` in a single pass — it models the sink *pattern*, not the bounded
+  streaming cache (KVCache has no eviction yet). Equivalence invariant:
+  `sink(sink_size=0, window>=S) == local` (tested).
 - `flash` requires CUDA + fp16/bf16 and falls back to SDPA otherwise; flash-attn
   is an optional dependency, never required.
 - `mla` (multi-head latent attention) subclasses `AttentionBase` directly (not
