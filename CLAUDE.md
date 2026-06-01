@@ -123,6 +123,13 @@ imports `models`. Key pieces:
   `local` in a single pass — it models the sink *pattern*, not the bounded
   streaming cache (KVCache has no eviction yet). Equivalence invariant:
   `sink(sink_size=0, window>=S) == local` (tested).
+- `alibi` (ALiBi linear-bias positions) adds a per-head `m_h·(j−i)` penalty to
+  the scores via `sdpa_core`'s float-mask path (causality folded into the same
+  bias). Slopes `m_h = 2^(−8h/H)` are a non-learned, non-persistent buffer. It
+  carries its own position, so it needs **no** positional embedding — but GPT
+  still adds a learned one when `use_rotary=false`, so end-to-end GPT use is a
+  follow-up needing a no-pos-emb path (`GPTConfig.pos_embedding: none`).
+  Equivalence invariant: zero slopes == `mha` (tested).
 - `flash` requires CUDA + fp16/bf16 and falls back to SDPA otherwise; flash-attn
   is an optional dependency, never required.
 - `mla` (multi-head latent attention) subclasses `AttentionBase` directly (not

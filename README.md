@@ -40,7 +40,14 @@ Swap attention by changing one config field (`attention_name`):
 | `local`  | sliding-window, banded mask (set `window_size`) | ✓ (banded mask) |
 | `local_flex` | sliding-window via `flex_attention` block mask (true sparsity) | — (flex kernel) |
 | `sink`   | StreamingLLM: first-k sink tokens + sliding window (set `window_size`, `extra.sink_size`) | ✓ (banded mask) |
+| `alibi`  | linear-bias positions `m_h·(j−i)`, no embeddings (carries its own position) | ✓ (additive bias) |
 | `mla`    | multi-head latent attention (compressed KV cache + decoupled RoPE) | — (own kernel) |
+
+> `alibi` replaces positional embeddings with a per-head distance penalty, so it
+> must be used with **no** token-position embedding. Wiring it into `GPT` cleanly
+> needs a "no positional embedding" path (GPT adds a learned one when
+> `use_rotary=false`); that's a documented follow-up — today `alibi` is usable and
+> tested at the attention-module level.
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig

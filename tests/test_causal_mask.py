@@ -4,7 +4,7 @@ import torch
 
 from transformerlab.attention import AttentionConfig, build_attention
 
-CAUSAL_VARIANTS = ["mha", "sdpa", "gqa", "mqa", "linear", "local", "local_flex", "mla"]
+CAUSAL_VARIANTS = ["mha", "sdpa", "gqa", "mqa", "linear", "local", "local_flex", "mla", "alibi"]
 
 
 @pytest.mark.parametrize("name", CAUSAL_VARIANTS)
