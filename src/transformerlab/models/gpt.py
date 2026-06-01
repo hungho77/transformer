@@ -19,7 +19,13 @@ class GPT(BaseModel):
         head_dim = cfg.head_dim or (cfg.dim // cfg.num_heads)
 
         self.tok_emb = TokenEmbedding(cfg.vocab_size, cfg.dim)
-        self.pos_emb = None if cfg.use_rotary else LearnedPositionalEmbedding(cfg.max_seq_len, cfg.dim)
+        # Positional scheme: rotary (default), learned absolute, or none. With
+        # `extra["no_pos_emb"]` (and use_rotary off) absolute position never enters
+        # the residual stream — used by ALiBi, which injects position solely through
+        # the attention score bias m_h·(j−i), so a learned embedding would double-count.
+        no_pos_emb = (not cfg.use_rotary) and bool(cfg.extra.get("no_pos_emb", False))
+        self.pos_emb = (None if (cfg.use_rotary or no_pos_emb)
+                        else LearnedPositionalEmbedding(cfg.max_seq_len, cfg.dim))
         self.rotary = RotaryEmbedding(head_dim, max_seq_len=cfg.max_seq_len) if cfg.use_rotary else None
         self.drop = nn.Dropout(cfg.dropout)
 

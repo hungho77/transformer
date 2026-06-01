@@ -60,7 +60,10 @@ imports `models`. Key pieces:
   (patch embed + cls/mean pool), `EncoderDecoder` (cross-attention decoder), `BERT`
   (bidirectional encoder + MLM head + token-type/segment embeddings).
   Configs are dataclasses in `models/configs.py`; YAML run files load into
-  `RunConfig` (`train/config.py`) and the model dataclasses.
+  `RunConfig` (`train/config.py`) and the model dataclasses. GPT positions:
+  rotary (`use_rotary=True`, default), learned absolute (`use_rotary=False`), or
+  none (`use_rotary=False` + `extra["no_pos_emb"]=True`, for ALiBi which injects
+  position via the attention bias instead).
 - **`train/trainer.py`**: task-agnostic loop. The task is injected as
   `loss_fn(model, batch) -> (loss, metrics_dict)` — see the `lm_loss` /
   `classification_loss` / `seq2seq_loss` closures in the example scripts.
@@ -126,10 +129,10 @@ imports `models`. Key pieces:
 - `alibi` (ALiBi linear-bias positions) adds a per-head `m_h·(j−i)` penalty to
   the scores via `sdpa_core`'s float-mask path (causality folded into the same
   bias). Slopes `m_h = 2^(−8h/H)` are a non-learned, non-persistent buffer. It
-  carries its own position, so it needs **no** positional embedding — but GPT
-  still adds a learned one when `use_rotary=false`, so end-to-end GPT use is a
-  follow-up needing a no-pos-emb path (`GPTConfig.pos_embedding: none`).
-  Equivalence invariant: zero slopes == `mha` (tested).
+  carries its own position, so it needs **no** positional embedding: in GPT use
+  `use_rotary=False` + `extra={"no_pos_emb": True}` (GPT then builds neither
+  rotary nor learned pos-emb; the quality/longctx bench builder sets this for the
+  `alibi` row). Equivalence invariant: zero slopes == `mha` (tested).
 - `flash` requires CUDA + fp16/bf16 and falls back to SDPA otherwise; flash-attn
   is an optional dependency, never required.
 - `mla` (multi-head latent attention) subclasses `AttentionBase` directly (not

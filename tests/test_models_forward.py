@@ -17,13 +17,17 @@ def _backward_ok(model):
     return any(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
 
 
-@pytest.mark.parametrize("attention_name", ["mha", "sdpa", "gqa", "linear", "local", "mla"])
+@pytest.mark.parametrize("attention_name", ["mha", "sdpa", "gqa", "linear", "local", "mla", "alibi"])
 def test_gpt_forward_backward(attention_name):
     kw = dict(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4, attention_name=attention_name)
     if attention_name == "gqa":
         kw["num_kv_heads"] = 2
     if attention_name == "local":
         kw["window_size"] = 8
+    if attention_name == "alibi":
+        # ALiBi supplies position itself -> no rotary, no learned pos-emb.
+        kw["use_rotary"] = False
+        kw["extra"] = {"no_pos_emb": True}
     model = GPT(GPTConfig(**kw))
     x = torch.randint(0, 50, (3, 16))
     logits, loss = model(x, x)
@@ -36,6 +40,25 @@ def test_gpt_generate_shapes():
     model = GPT(GPTConfig(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4))
     out = model.generate(torch.zeros(2, 3, dtype=torch.long), max_new_tokens=10)
     assert out.shape == (2, 13)
+
+
+def test_gpt_no_pos_emb_flag():
+    # use_rotary=False + extra["no_pos_emb"] -> neither rotary nor learned pos-emb.
+    cfg = GPTConfig(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4,
+                    attention_name="alibi", use_rotary=False, extra={"no_pos_emb": True})
+    model = GPT(cfg)
+    assert model.pos_emb is None and model.rotary is None
+    # Back-compat: use_rotary=False *without* the flag still builds a learned pos-emb.
+    legacy = GPT(GPTConfig(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4, use_rotary=False))
+    assert legacy.pos_emb is not None and legacy.rotary is None
+
+
+def test_gpt_alibi_generate():
+    # ALiBi GPT must decode through the KV cache (offset-aligned bias) without error.
+    model = GPT(GPTConfig(vocab_size=50, max_seq_len=32, dim=48, n_layers=2, num_heads=4,
+                          attention_name="alibi", use_rotary=False, extra={"no_pos_emb": True}))
+    out = model.generate(torch.zeros(2, 3, dtype=torch.long), max_new_tokens=8)
+    assert out.shape == (2, 11)
 
 
 def test_vit_forward_backward():

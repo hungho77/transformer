@@ -93,6 +93,11 @@ def _gpt_builder(vocab_size, model_cfg, num_heads, seq_len):
             kw["num_kv_heads"] = max(1, num_heads // 2)
         if variant in ("local", "local_flex") and not kw.get("window_size"):
             kw["window_size"] = max(8, seq_len // 4)
+        if variant == "alibi":
+            # ALiBi carries its own position (score bias), so disable rotary and
+            # suppress the learned positional embedding to avoid double-counting.
+            kw["use_rotary"] = False
+            kw["extra"] = {**kw.get("extra", {}), "no_pos_emb": True}
         return GPT(GPTConfig(vocab_size=vocab_size, **kw))
 
     return build

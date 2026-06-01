@@ -44,10 +44,10 @@ Swap attention by changing one config field (`attention_name`):
 | `mla`    | multi-head latent attention (compressed KV cache + decoupled RoPE) | — (own kernel) |
 
 > `alibi` replaces positional embeddings with a per-head distance penalty, so it
-> must be used with **no** token-position embedding. Wiring it into `GPT` cleanly
-> needs a "no positional embedding" path (GPT adds a learned one when
-> `use_rotary=false`); that's a documented follow-up — today `alibi` is usable and
-> tested at the attention-module level.
+> must run with **no** token-position embedding. In `GPT`, use
+> `use_rotary: false` + `extra: {no_pos_emb: true}` (the bench builder sets this
+> automatically for the `alibi` row) — GPT then adds neither rotary nor a learned
+> absolute embedding, and ALiBi is the sole position signal.
 
 ```python
 from transformerlab.attention import available_attentions, build_attention, AttentionConfig
@@ -163,18 +163,22 @@ variant       512    1024    2048     4096      val_ppl@4096
 mha           490    1552    5599    21385      10.57
 local         490    1552    5599    21385      10.23   (banded mask: no savings)
 sink          490    1552    5599    21385      10.57   (sinks+window, dense kernel)
+alibi         497    1582    5718    21863       9.36   (best quality; dense kernel)
 sdpa          241     414     760     1451      10.57
 flash         241     414     760     1451      10.57
 mqa           229     390     711     1354      10.77
-local_flex    249     430     792     1515      10.23   (best quality)
+local_flex    249     430     792     1515      10.23
 linear        842    1614    3160     6250      12.58   (cheap FLOPs, weak quality)
 ```
 
-`sdpa`/`flash` deliver `mha`'s exact quality (10.57) at **~14× less memory** at
-4096; `local_flex` gives the best perplexity (10.23) via true block-sparsity at
-similar memory. `mha`/`local`/`sink` blow up quadratically and would OOM first on
-a real-scale model. `flash` and `sdpa` are memory-identical here (both fused, no
-score matrix). Writes `saved/<name>/longctx.{csv,md}`.
+`alibi` gives the **best perplexity at every length** (9.36 at 4096 vs `mha`'s
+10.57) — its distance-penalty bias extrapolates cleanly past the trained length —
+but it runs on the dense kernel, so its memory tracks `mha`. `sdpa`/`flash`
+deliver `mha`'s exact quality (10.57) at **~14× less memory** at 4096;
+`local_flex` matches `local`'s quality (10.23) via true block-sparsity at that
+low memory. `mha`/`local`/`sink`/`alibi` blow up quadratically and would OOM
+first on a real-scale model (combining ALiBi with a sparse kernel is future
+work). Writes `saved/<name>/longctx.{csv,md}`.
 
 > **Note on `sink`:** StreamingLLM's memory win comes from *evicting* tokens
 > outside the sink+window from the KV cache during decoding. This repo's `sink`
