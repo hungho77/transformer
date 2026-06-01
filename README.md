@@ -56,6 +56,29 @@ python examples/train_bert.py --config configs/bert_char_tiny.yaml
 python examples/train_gpt.py --config configs/gpt_char_tiny.yaml --attention linear
 ```
 
+## Training
+
+The `Trainer` is task-agnostic (inject `loss_fn(model, batch) -> (loss, metrics)`)
+and supports the features needed for real runs, all configurable from YAML:
+
+- **Gradient accumulation** (`accum_steps`) — large effective batch on one GPU;
+  step counts are in *optimizer* steps regardless of the accumulation factor.
+- **Checkpoint resume** — `save_checkpoint`/`load_checkpoint` persist model +
+  optimizer + scheduler + AMP scaler + RNG + step, so `--resume saved/<run>/last.pt`
+  continues bit-for-bit.
+- **Best checkpoint + early stopping** (`monitor`/`mode`/`patience`/`save_best`)
+  — track a val metric, keep `best.pt`, stop when it plateaus.
+- **Gradient checkpointing** (`model.grad_checkpoint: true`) — recompute block
+  activations in the backward pass. ~**3.7× less** activation memory on an
+  8-layer/dim-512/1k-context GPT (5087 → 1380 MB), enabling longer context /
+  deeper models for ~30% extra compute.
+- **AMP** (`amp: true`) mixed precision on CUDA.
+
+```bash
+python examples/train_gpt.py --config configs/gpt_char_tiny.yaml
+python examples/train_gpt.py --config configs/gpt_char_tiny.yaml --resume saved/gpt_char_tiny/last.pt
+```
+
 ## Benchmark
 
 ```bash

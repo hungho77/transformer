@@ -20,8 +20,14 @@ class RunConfig:
     num_workers: int = 2
     grad_clip: float = 1.0
     amp: bool = False
+    accum_steps: int = 1            # micro-batches per optimizer step (effective batch = batch_size·accum_steps)
     log_interval: int = 50
     eval_interval: int = 0          # 0 disables periodic eval
+    monitor: str = ""               # metric for best-ckpt / early-stop, e.g. "val_loss"
+    mode: str = "min"
+    patience: int = 0               # early-stop after this many non-improving evals (0 disables)
+    save_best: bool = False
+    resume: str = ""                # path to a checkpoint to resume from
     save_dir: str = "saved"
     model: dict = field(default_factory=dict)
     optimizer: dict = field(default_factory=lambda: {"type": "AdamW", "lr": 3e-4})
