@@ -8,8 +8,17 @@ batch_size: 64
 num_workers: 2
 grad_clip: 1.0
 amp: false
+accum_steps: 1            # raise for a larger effective batch on limited memory
 log_interval: 50
+eval_interval: 250        # run validation every N optimizer steps (0 disables)
+monitor: val_loss         # track this metric for best.pt / early stopping
+mode: min
+patience: 0               # >0 enables early stopping after N non-improving evals
+save_best: true
 save_dir: saved
+
+data:
+  val_frac: 0.1
 
 model:
   max_seq_len: 128
@@ -22,6 +31,7 @@ model:
   norm_type: rms
   dropout: 0.1
   use_rotary: true
+  grad_checkpoint: false  # set true to recompute activations and save memory
 
 optimizer:
   type: AdamW

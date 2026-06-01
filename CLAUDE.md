@@ -64,6 +64,11 @@ imports `models`. Key pieces:
 - **`train/trainer.py`**: task-agnostic loop. The task is injected as
   `loss_fn(model, batch) -> (loss, metrics_dict)` — see the `lm_loss` /
   `classification_loss` / `seq2seq_loss` closures in the example scripts.
+  Supports gradient accumulation (`accum_steps`; step counts are optimizer
+  steps), full-state `save_checkpoint`/`load_checkpoint` (model+opt+sched+scaler
+  +RNG+step) for `--resume`, and best-ckpt + early stop (`monitor`/`mode`/
+  `patience`/`save_best`). GPT honors `GPTConfig.grad_checkpoint` (wraps blocks
+  in `torch.utils.checkpoint`, training-only) for ~3.7x activation-memory savings.
 - **`bench/`**: `sweep.py` profiles attention modules (latency/peak-mem/FLOPs);
   `quality.py` trains the same GPT under each variant and reports val perplexity
   vs throughput/memory with a Pareto flag (`mark_pareto`). Both reuse

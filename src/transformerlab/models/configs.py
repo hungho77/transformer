@@ -24,6 +24,7 @@ class GPTConfig:
     use_rotary: bool = True
     window_size: Optional[int] = None
     tie_weights: bool = True
+    grad_checkpoint: bool = False   # recompute block activations in backward to save memory
     extra: dict = field(default_factory=dict)
 
 

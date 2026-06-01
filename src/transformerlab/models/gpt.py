@@ -4,6 +4,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
 
 from ..attention import KVCache
 from ..layers import BlockConfig, LearnedPositionalEmbedding, RotaryEmbedding, TokenEmbedding, build_norm, make_blocks
@@ -51,8 +52,16 @@ class GPT(BaseModel):
         if self.pos_emb is not None:
             x = self.pos_emb(x)
         x = self.drop(x)
+        # Gradient checkpointing: in training, don't keep each block's activations;
+        # recompute them in the backward pass instead. Trades ~30% compute for a
+        # large activation-memory cut (enables longer context / deeper models).
+        ckpt = self.cfg.grad_checkpoint and self.training
         for block in self.blocks:
-            x = block(x, is_causal=True, rotary=self.rotary)
+            if ckpt:
+                x = torch.utils.checkpoint.checkpoint(
+                    block, x, is_causal=True, rotary=self.rotary, use_reentrant=False)
+            else:
+                x = block(x, is_causal=True, rotary=self.rotary)
         x = self.norm_f(x)
         logits = self.lm_head(x)
 
